@@ -1,0 +1,61 @@
+version: "3.6"
+
+services:
+  backend:
+    env_file:
+      - ${ENV:-./backend/.env}
+    environment:
+      PYTHONUNBUFFERED: 0
+    build:
+      context: ./
+      dockerfile: ./backend/Dockerfile
+    command: >
+      /bin/sh -c "
+        nodemon -e py --watch src --exec 'flake8 src/ && gunicorn -b 0.0.0.0:8000 wsgi:app';
+      "
+    ports:
+      - 8000:8000
+    volumes:
+      - ./backend/src:/flask_gunicorn/src
+    depends_on:
+      - postgres
+
+  postgres:
+    env_file:
+      - ${ENV:-./backend/.env}
+    image: postgres:10.3
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "defaultPostgresPassword01"
+      POSTGRES_DB: "gunicorn_flask"
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: 5432
+    ports:
+      - 5432:5432
+    volumes:
+      - ${HOME}/databases/flask_gunicorn/postgres:/var/lib/postgresql/data:rw
+#      - ./scripts/database/sql:/docker-entrypoint-initdb.d/
+#      - ./scripts/database/data:/database/sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER"]
+      interval: 15s
+      timeout: 30s
+      retries: 3
+
+  database-upgrade:
+    env_file:
+      - ${ENV:-./backend/.env}
+    build:
+      context: ./
+      dockerfile: ./backend/Dockerfile
+      args:
+        PUBLIC_PORT: 8000
+    depends_on:
+      - postgres
+    command:  >
+      /bin/sh -c "
+        cd src;
+        flask db upgrade;
+      "
+    volumes:
+      - ./backend/src:/flask_gunicorn/src
